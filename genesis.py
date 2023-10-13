@@ -1,4 +1,4 @@
-import hashlib, binascii, struct, array, os, time, sys, optparse
+import hashlib, binascii, struct, array, os, time, sys, argparse, importlib
 import scrypt
 import pivx_quark_hash as quark_hash
 
@@ -23,107 +23,120 @@ def main():
 
 
 def get_args():
-  parser = optparse.OptionParser()
-  parser.add_option("-t", "--time", dest="time", default=int(time.time()), 
-                   type="int", help="the (unix) time when the genesisblock is created")
-  parser.add_option("-z", "--timestamp", dest="timestamp", default="The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
-                   type="string", help="the pszTimestamp found in the coinbase of the genesisblock")
-  parser.add_option("-n", "--nonce", dest="nonce", default=0,
-                   type="int", help="the first value of the nonce that will be incremented when searching the genesis hash")
-  parser.add_option("-a", "--algorithm", dest="algorithm", default="SHA256",
-                help="the PoW algorithm: [SHA256|scrypt|X11|X13|X15|quark]")
-  parser.add_option("-p", "--pubkey", dest="pubkey", default="04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f",
-                   type="string", help="the pubkey found in the output script")
-  parser.add_option("-v", "--value", dest="value", default=5000000000,
-                   type="int", help="the value in coins for the output, full value (exp. in bitcoin 5000000000 - To get other coins value: Block Value * 100000000)")
-  parser.add_option("-b", "--bits", dest="bits",
-                   type="int", help="the target in compact representation, associated to a difficulty of 1")
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument("-t", "--time", type=int, default=int(time.time()), 
+                        help="the (unix) time when the genesis block is created")
+    
+    parser.add_argument("-z", "--timestamp", default="The Times 03/Jan/2009 Chancellor on brink of second bailout for banks", 
+                        help="the pszTimestamp found in the coinbase of the genesis block")
+    
+    parser.add_argument("-n", "--nonce", type=int, default=0, 
+                        help="the first value of the nonce that will be incremented when searching the genesis hash")
+    
+    parser.add_argument("-a", "--algorithm", default="SHA256", 
+                        help="the PoW algorithm: [SHA256|scrypt|X11|X13|X15|quark]")
+    
+    parser.add_argument("-p", "--pubkey", 
+                        default="04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f", 
+                        help="the pubkey found in the output script")
+    
+    parser.add_argument("-v", "--value", type=int, default=5000000000, 
+                        help="the value in coins for the output, full value (exp. in bitcoin 5000000000 - To get other coins value: Block Value * 100000000)")
+    
+    parser.add_argument("-b", "--bits", type=int, 
+                        help="the target in compact representation, associated to a difficulty of 1")
+    
+    args = parser.parse_args()
 
-  (options, args) = parser.parse_args()
-  if not options.bits:
-    if options.algorithm == "scrypt" or options.algorithm == "X11" or options.algorithm == "X13" or options.algorithm == "X15":
-      options.bits = 0x1e0ffff0
-    else:
-      options.bits = 0x1d00ffff
-  return options
+    if not args.bits:
+        if args.algorithm in ["scrypt", "X11", "X13", "X15"]:
+            args.bits = 0x1e0ffff0
+        else:
+            args.bits = 0x1d00ffff
+            
+    return args
 
 def get_algorithm(options):
-  supported_algorithms = ["SHA256", "scrypt", "X11", "X13", "X15"]
+  supported_algorithms = ["SHA256", "scrypt", "X11", "X13", "X15", "quark"]
   if options.algorithm in supported_algorithms:
     return options.algorithm
   else:
     sys.exit("Error: Given algorithm must be one of: " + str(supported_algorithms))
 
 def create_input_script(psz_timestamp):
-  psz_prefix = ""
-  #use OP_PUSHDATA1 if required
-  if len(psz_timestamp) > 76: psz_prefix = '4c'
+    psz_prefix = ""
+    if len(psz_timestamp) > 76:
+        psz_prefix = '4c'
+    script_prefix = '04ffff001d0104' + psz_prefix + (len(psz_timestamp)).to_bytes(1, byteorder='big').hex()
+    print(script_prefix + psz_timestamp.encode('utf-8').hex())
+    return bytes.fromhex(script_prefix + psz_timestamp.encode('utf-8').hex())
 
-  script_prefix = '04ffff001d0104' + psz_prefix + chr(len(psz_timestamp)).encode('hex')
-  print (script_prefix + psz_timestamp.encode('hex'))
-  return (script_prefix + psz_timestamp.encode('hex')).decode('hex')
 
 
 def create_output_script(pubkey):
   script_len = '41'
   OP_CHECKSIG = 'ac'
-  return (script_len + pubkey + OP_CHECKSIG).decode('hex')
+  return bytes.fromhex(script_len + pubkey + OP_CHECKSIG)
 
 
-def create_transaction(input_script, output_script,options):
-  transaction = Struct("transaction",
-    Bytes("version", 4),
-    Byte("num_inputs"),
-    StaticField("prev_output", 32),
-    UBInt32('prev_out_idx'),
-    Byte('input_script_len'),
-    Bytes('input_script', len(input_script)),
-    UBInt32('sequence'),
-    Byte('num_outputs'),
-    Bytes('out_value', 8),
-    Byte('output_script_len'),
-    Bytes('output_script',  0x43),
-    UBInt32('locktime'))
+def create_transaction(input_script, output_script, options):
+    transaction = Struct(
+        "version" / Bytes(4),
+        "num_inputs" / Byte,
+        "prev_output" / Bytes(32),
+        "prev_out_idx" / Int32ul, # <-- Updated
+        "input_script_len" / Byte,
+        "input_script" / Bytes(len(input_script)),
+        "sequence" / Int32ul, # <-- Updated
+        "num_outputs" / Byte,
+        "out_value" / Bytes(8),
+        "output_script_len" / Byte,
+        "output_script" / Bytes(0x43),
+        "locktime" / Int32ul # <-- Updated
+    )
 
-  tx = transaction.parse('\x00'*(127 + len(input_script)))
-  tx.version           = struct.pack('<I', 1)
-  tx.num_inputs        = 1
-  tx.prev_output       = struct.pack('<qqqq', 0,0,0,0)
-  tx.prev_out_idx      = 0xFFFFFFFF
-  tx.input_script_len  = len(input_script)
-  tx.input_script      = input_script
-  tx.sequence          = 0xFFFFFFFF
-  tx.num_outputs       = 1
-  tx.out_value         = struct.pack('<q' ,options.value)#0x000005f5e100)#012a05f200) #50 coins
-  #tx.out_value         = struct.pack('<q' ,0x000000012a05f200) #50 coins
-  tx.output_script_len = 0x43
-  tx.output_script     = output_script
-  tx.locktime          = 0 
-  return transaction.build(tx)
+    tx_data = b'\x00' * (127 + len(input_script))
+    tx = transaction.parse(tx_data)
+    tx["version"] = struct.pack('<I', 1)
+    tx["num_inputs"] = 1
+    tx["prev_output"] = struct.pack('<qqqq', 0, 0, 0, 0)
+    tx["prev_out_idx"] = 0xFFFFFFFF
+    tx["input_script_len"] = len(input_script)
+    tx["input_script"] = input_script
+    tx["sequence"] = 0xFFFFFFFF
+    tx["num_outputs"] = 1
+    tx["out_value"] = struct.pack('<q', options.value)
+    tx["output_script_len"] = 0x43
+    tx["output_script"] = output_script
+    tx["locktime"] = 0 
+
+    return transaction.build(tx)
 
 
 def create_block_header(hash_merkle_root, time, bits, nonce):
-  block_header = Struct("block_header",
-    Bytes("version",4),
-    Bytes("hash_prev_block", 32),
-    Bytes("hash_merkle_root", 32),
-    Bytes("time", 4),
-    Bytes("bits", 4),
-    Bytes("nonce", 4))
+    block_header = Struct(
+        "version" / Bytes(4),
+        "hash_prev_block" / Bytes(32),
+        "hash_merkle_root" / Bytes(32),
+        "time" / Bytes(4),
+        "bits" / Bytes(4),
+        "nonce" / Bytes(4)
+    )
 
-  genesisblock = block_header.parse('\x00'*80)
-  genesisblock.version          = struct.pack('<I', 1)
-  genesisblock.hash_prev_block  = struct.pack('<qqqq', 0,0,0,0)
-  genesisblock.hash_merkle_root = hash_merkle_root
-  genesisblock.time             = struct.pack('<I', time)
-  genesisblock.bits             = struct.pack('<I', bits)
-  genesisblock.nonce            = struct.pack('<I', nonce)
-  return block_header.build(genesisblock)
+    genesisblock = block_header.parse(b'\x00'*80)
+    genesisblock["version"] = struct.pack('<I', 1)
+    genesisblock["hash_prev_block"] = struct.pack('<qqqq', 0, 0, 0, 0)
+    genesisblock["hash_merkle_root"] = hash_merkle_root
+    genesisblock["time"] = struct.pack('<I', time)
+    genesisblock["bits"] = struct.pack('<I', bits)
+    genesisblock["nonce"] = struct.pack('<I', nonce)
+    return block_header.build(genesisblock)
 
 
 # https://en.bitcoin.it/wiki/Block_hashing_algorithm
 def generate_hash(data_block, algorithm, start_nonce, bits):
-  print 'Searching for genesis hash..'
+  print('Searching for genesis hash..')
   nonce           = start_nonce
   last_updated    = time.time()
   # https://en.bitcoin.it/wiki/Difficulty
@@ -143,36 +156,38 @@ def generate_hash(data_block, algorithm, start_nonce, bits):
 
 def generate_hashes_from_block(data_block, algorithm):
     sha256_hash = hashlib.sha256(hashlib.sha256(data_block).digest()).digest()[::-1]
-    header_hash = ""
+    header_hash = b""
+    
     if algorithm == 'scrypt':
         header_hash = scrypt.hash(data_block, data_block, 1024, 1, 1, 32)[::-1]
     elif algorithm == 'SHA256':
         header_hash = sha256_hash
     elif algorithm == 'X11':
         try:
-            exec('import %s' % "xcoin_hash")
-        except ImportError:
+            xcoin_hash = importlib.import_module("xcoin_hash")
+        except ImportError as e:
             sys.exit("Cannot run X11 algorithm: module xcoin_hash not found")
         header_hash = xcoin_hash.getPoWHash(data_block)[::-1]
     elif algorithm == 'X13':
         try:
-            exec('import %s' % "x13_hash")
-        except ImportError:
+            x13_hash = importlib.import_module("x13_hash")
+        except ImportError as e:
             sys.exit("Cannot run X13 algorithm: module x13_hash not found")
         header_hash = x13_hash.getPoWHash(data_block)[::-1]
     elif algorithm == 'X15':
         try:
-            exec('import %s' % "x15_hash")
-        except ImportError:
+            x15_hash = importlib.import_module("x15_hash")
+        except ImportError as e:
             sys.exit("Cannot run X15 algorithm: module x15_hash not found")
         header_hash = x15_hash.getPoWHash(data_block)[::-1]
     elif algorithm == 'quark':
         header_hash = quark_hash.getPoWHash(data_block)[::-1]
+
     return sha256_hash, header_hash
 
-
 def is_genesis_hash(header_hash, target):
-  return int(header_hash.encode('hex_codec'), 16) < target
+  return int(header_hash.hex(), 16) < target
+
 
 
 def calculate_hashrate(nonce, last_updated):
@@ -188,18 +203,18 @@ def calculate_hashrate(nonce, last_updated):
 
 
 def print_block_info(options, hash_merkle_root):
-  print "algorithm: "    + (options.algorithm)
-  print "merkle hash: "  + hash_merkle_root[::-1].encode('hex_codec')
-  print "pszTimestamp: " + options.timestamp
-  print "pubkey: "       + options.pubkey
-  print "time: "         + str(options.time)
-  print "bits: "         + str(hex(options.bits))
+    print("algorithm: {}".format(options.algorithm))
+    print("merkle hash: {}".format(hash_merkle_root[::-1].hex()))
+    print("pszTimestamp: {}".format(options.timestamp))
+    print("pubkey: {}".format(options.pubkey))
+    print("time: {}".format(options.time))
+    print("bits: {}".format(hex(options.bits)))
 
 
 def announce_found_genesis(genesis_hash, nonce):
-  print "genesis hash found!"
-  print "nonce: "        + str(nonce)
-  print "genesis hash: " + genesis_hash.encode('hex_codec')
+    print("genesis hash found!")
+    print("nonce: {}".format(nonce))
+    print("genesis hash: {}".format(genesis_hash.hex()))
 
 
 # GOGOGO!
