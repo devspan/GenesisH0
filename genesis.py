@@ -1,5 +1,6 @@
 import hashlib, binascii, struct, array, os, time, sys, optparse
 import scrypt
+import pivx_quark_hash as quark_hash
 
 from construct import *
 
@@ -30,7 +31,7 @@ def get_args():
   parser.add_option("-n", "--nonce", dest="nonce", default=0,
                    type="int", help="the first value of the nonce that will be incremented when searching the genesis hash")
   parser.add_option("-a", "--algorithm", dest="algorithm", default="SHA256",
-                    help="the PoW algorithm: [SHA256|scrypt|X11|X13|X15]")
+                help="the PoW algorithm: [SHA256|scrypt|X11|X13|X15|quark]")
   parser.add_option("-p", "--pubkey", dest="pubkey", default="04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f",
                    type="string", help="the pubkey found in the output script")
   parser.add_option("-v", "--value", dest="value", default=5000000000,
@@ -141,31 +142,33 @@ def generate_hash(data_block, algorithm, start_nonce, bits):
 
 
 def generate_hashes_from_block(data_block, algorithm):
-  sha256_hash = hashlib.sha256(hashlib.sha256(data_block).digest()).digest()[::-1]
-  header_hash = ""
-  if algorithm == 'scrypt':
-    header_hash = scrypt.hash(data_block,data_block,1024,1,1,32)[::-1] 
-  elif algorithm == 'SHA256':
-    header_hash = sha256_hash
-  elif algorithm == 'X11':
-    try:
-      exec('import %s' % "xcoin_hash")
-    except ImportError:
-      sys.exit("Cannot run X11 algorithm: module xcoin_hash not found")
-    header_hash = xcoin_hash.getPoWHash(data_block)[::-1]
-  elif algorithm == 'X13':
-    try:
-      exec('import %s' % "x13_hash")
-    except ImportError:
-      sys.exit("Cannot run X13 algorithm: module x13_hash not found")
-    header_hash = x13_hash.getPoWHash(data_block)[::-1]
-  elif algorithm == 'X15':
-    try:
-      exec('import %s' % "x15_hash")
-    except ImportError:
-      sys.exit("Cannot run X15 algorithm: module x15_hash not found")
-    header_hash = x15_hash.getPoWHash(data_block)[::-1]
-  return sha256_hash, header_hash
+    sha256_hash = hashlib.sha256(hashlib.sha256(data_block).digest()).digest()[::-1]
+    header_hash = ""
+    if algorithm == 'scrypt':
+        header_hash = scrypt.hash(data_block, data_block, 1024, 1, 1, 32)[::-1]
+    elif algorithm == 'SHA256':
+        header_hash = sha256_hash
+    elif algorithm == 'X11':
+        try:
+            exec('import %s' % "xcoin_hash")
+        except ImportError:
+            sys.exit("Cannot run X11 algorithm: module xcoin_hash not found")
+        header_hash = xcoin_hash.getPoWHash(data_block)[::-1]
+    elif algorithm == 'X13':
+        try:
+            exec('import %s' % "x13_hash")
+        except ImportError:
+            sys.exit("Cannot run X13 algorithm: module x13_hash not found")
+        header_hash = x13_hash.getPoWHash(data_block)[::-1]
+    elif algorithm == 'X15':
+        try:
+            exec('import %s' % "x15_hash")
+        except ImportError:
+            sys.exit("Cannot run X15 algorithm: module x15_hash not found")
+        header_hash = x15_hash.getPoWHash(data_block)[::-1]
+    elif algorithm == 'quark':
+        header_hash = quark_hash.getPoWHash(data_block)[::-1]
+    return sha256_hash, header_hash
 
 
 def is_genesis_hash(header_hash, target):
