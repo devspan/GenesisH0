@@ -2,4 +2,3 @@ construct==2.10.67
 scrypt==0.8.20
 pivx-quark-hash
 x13-hash
-x15-hash
