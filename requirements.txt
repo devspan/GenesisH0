@@ -1,6 +1,6 @@
 construct==2.10.67
 scrypt==0.8.20
-pivx-quark-hash==1.1.1  
-xcoin-hash==1.1.1       
-x13-hash==1.1.1         
-x15-hash==1.1.1         
+pivx-quark-hash
+xcoin-hash
+x13-hash
+x15-hash
